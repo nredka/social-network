@@ -25,5 +25,5 @@ htmlcov/
 .vscode/
 .DS_Store
 
-# Claude Code local worktrees
-.claude/worktrees/
+# Claude Code local settings and worktrees
+.claude/
