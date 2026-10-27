@@ -5,8 +5,11 @@ description = "IT Cluster Social Network: a FastAPI + PostgreSQL backend (academ
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "alembic==1.20.1",
     "fastapi==0.162.0",
+    "psycopg[binary]==3.3.6",
     "pydantic-settings==2.16.1",
+    "sqlalchemy==2.1.6",
     "uvicorn[standard]==0.54.0",
 ]
 
