@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     app_name: str = "IT Cluster Social Network"
     environment: str = "development"
     debug: bool = False
+    # Required on purpose: fail fast at startup instead of guessing a database.
+    database_url: str
 
 
 @lru_cache
