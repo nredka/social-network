@@ -1,0 +1,29 @@
+[project]
+name = "social-network"
+version = "0.1.0"
+description = "IT Cluster Social Network: a FastAPI + PostgreSQL backend (academic project)"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi==0.162.0",
+    "pydantic-settings==2.16.1",
+    "uvicorn[standard]==0.54.0",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/F: pycodestyle + pyflakes, I: import sorting, B: bugbear, UP: pyupgrade
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "httpx==0.28.1",
+    "pytest==9.1.1",
+    "ruff==0.17.3",
+]
