@@ -9,6 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base
 
 if TYPE_CHECKING:
+    from app.models.comment import Comment
     from app.models.user import User
 
 
@@ -28,6 +29,9 @@ class Post(Base):
     )
 
     author: Mapped[User] = relationship(back_populates="posts")
+    comments: Mapped[list[Comment]] = relationship(
+        back_populates="post", cascade="all, delete-orphan", passive_deletes=True
+    )
 
 
 # Serves "latest posts of one author": filter by author_id, already sorted by
