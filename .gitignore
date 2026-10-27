@@ -1,0 +1,29 @@
+# Python bytecode and packaging
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+
+# Environment files (secrets); the example file is tracked
+.env
+.env.*
+!.env.example
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# IDE and OS files
+.idea/
+.vscode/
+.DS_Store
+
+# Claude Code local settings and worktrees
+.claude/
