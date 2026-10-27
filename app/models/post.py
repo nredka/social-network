@@ -10,6 +10,7 @@ from app.models.base import Base
 
 if TYPE_CHECKING:
     from app.models.comment import Comment
+    from app.models.like import Like
     from app.models.user import User
 
 
@@ -30,6 +31,9 @@ class Post(Base):
 
     author: Mapped[User] = relationship(back_populates="posts")
     comments: Mapped[list[Comment]] = relationship(
+        back_populates="post", cascade="all, delete-orphan", passive_deletes=True
+    )
+    likes: Mapped[list[Like]] = relationship(
         back_populates="post", cascade="all, delete-orphan", passive_deletes=True
     )
 
