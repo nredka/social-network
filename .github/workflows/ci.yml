@@ -44,6 +44,9 @@ jobs:
       # there, so the host is localhost (in Docker Compose it will be "db").
       # app/main.py builds Settings at import time, so even pytest needs this.
       DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/social_network_test
+      # The suite refuses to run unless this database name ends with _test. The CI
+      # database is throwaway, so the tests can use the same one as the migrations.
+      TEST_DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/social_network_test
       # Throwaway value, at least 32 characters. It protects nothing: the runner is
       # discarded after the run. A real production secret would live in GitHub
       # Secrets (secrets.JWT_SECRET_KEY), never in this public file.
@@ -75,5 +78,7 @@ jobs:
       - name: Check migrations are reversible
         run: uv run alembic downgrade base && uv run alembic upgrade head
 
-      - name: Run tests
-        run: uv run pytest -v
+      # Prints the coverage report. The build fails if coverage drops below the
+      # fail_under value in pyproject.toml.
+      - name: Run tests with coverage
+        run: uv run pytest -v --cov=app --cov-report=term-missing
