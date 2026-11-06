@@ -27,6 +27,10 @@ extend-exclude = ["alembic/versions"]
 # E/F: pycodestyle + pyflakes, I: import sorting, B: bugbear, UP: pyupgrade
 select = ["E", "F", "I", "B", "UP"]
 
+[tool.ruff.lint.per-file-ignores]
+# conftest.py must set DATABASE_URL before importing the app (see its docstring).
+"tests/conftest.py" = ["E402"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
