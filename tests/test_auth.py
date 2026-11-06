@@ -268,3 +268,15 @@ def test_a_token_of_a_deleted_user_is_rejected(client, db_session, alice):
     db_session.commit()
 
     assert client.get("/users/me", headers=bearer(token)).status_code == 401
+
+
+def test_a_token_whose_subject_is_not_a_number_is_rejected(client):
+    # A correct signature is not enough: "sub" must be a user id.
+    now = datetime.now(UTC)
+    token = jwt.encode(
+        {"sub": "abc", "iat": now, "exp": now + timedelta(minutes=5)},
+        get_settings().jwt_secret_key,
+        algorithm="HS256",
+    )
+
+    assert client.get("/users/me", headers=bearer(token)).status_code == 401
