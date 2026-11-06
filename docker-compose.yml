@@ -7,15 +7,50 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
     ports:
-      # Bind to localhost only so the database is not exposed to the network.
+      # Published on localhost only, for psql and for tests run on the host. In
+      # production the database would not be published at all: the api reaches it over
+      # the private network below.
       - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - backend
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
+
+  api:
+    build: .
+    restart: unless-stopped
+    # Loads every variable from .env (JWT_SECRET_KEY, APP_NAME, ...). "environment"
+    # below takes priority over it, which is how DATABASE_URL gets overridden.
+    env_file: .env
+    environment:
+      # Inside a container, localhost is the container itself, so the database is
+      # reached by its service name "db" (Docker's DNS resolves it on the shared
+      # network). Built from the POSTGRES_* variables so there is only one set of
+      # credentials to maintain. The .env value, with localhost, is what the app and
+      # the tests use when run directly on the host. The password must not contain
+      # characters that are special in a URL (@ / : ? #).
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:?set POSTGRES_DB in .env}
+    depends_on:
+      db:
+        # Wait until PostgreSQL passes its healthcheck, not merely until the
+        # container has started.
+        condition: service_healthy
+    ports:
+      # Published on localhost only. The host port defaults to 8000; set API_PORT to
+      # use another one, for example when the app already runs on the host on 8000.
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    networks:
+      - backend
+
+# One private network: the services find each other by name and nothing else on the
+# machine can reach them except through the ports published above.
+networks:
+  backend:
 
 volumes:
   pgdata:

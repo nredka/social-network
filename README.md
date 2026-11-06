@@ -11,7 +11,9 @@ posts, comments and likes with Alembic migrations), a REST API on top of it and 
 pipeline that lints, applies the migrations and runs the tests on every push and pull
 request. Users log in and call the API with a JWT bearer token, and only the author can
 edit or delete their own posts and comments (see [API](#api)). An automated test suite
-runs the API against a real PostgreSQL database (see [Test and lint](#test-and-lint)).
+runs the API against a real PostgreSQL database (see [Test and lint](#test-and-lint)),
+and the whole stack, the API and PostgreSQL, runs in Docker (see
+[Run with Docker](#run-with-docker)).
 
 **Roadmap**
 
@@ -23,10 +25,10 @@ runs the API against a real PostgreSQL database (see [Test and lint](#test-and-l
 | 3         | REST API (users, posts, comments, likes) | done    |
 | 4         | Authentication and authorization         | done    |
 | 5         | Tests against a real database            | done    |
-| 6         | Docker image and Compose for the app     | next    |
-| 8         | Docker image build and deploy docs       | planned |
+| 6         | Docker image and Compose for the app     | done    |
+| 8         | Docker image build and deploy docs       | next    |
 
-The order of the remaining work is 6 → 8.
+The order of the remaining work is 8.
 
 ## Requirements
 
@@ -62,11 +64,14 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 ## Database
 
-PostgreSQL 16 runs in a Docker container; its data lives in the named volume `pgdata`,
-so it survives container restarts.
+PostgreSQL 16 runs in a Docker container (the `db` service of `docker-compose.yml`); its
+data lives in the named volume `pgdata`, so it survives container restarts. The
+instructions in this section are for running the app **on the host**, so they start only
+the database. To run the API in a container as well, see
+[Run with Docker](#run-with-docker).
 
 ```bash
-# Start the database and wait until it reports "healthy"
+# Start only the database and wait until it reports "healthy"
 docker compose up -d db
 docker compose ps
 
@@ -101,7 +106,7 @@ constraints, or data migrations.
 ### Stop or reset
 
 ```bash
-docker compose down        # stop the database, keep the data
+docker compose down        # stop and remove the containers, keep the data
 docker compose down -v     # stop and DELETE all data (removes the volume)
 ```
 
@@ -118,6 +123,20 @@ Deleting a user or a post deletes everything that depends on it (`ON DELETE CASC
 
 ## Run the app
 
+There are two ways to run the API. Use the one that fits what you are doing:
+
+|                    | On the host (below)                                | In Docker ([Run with Docker](#run-with-docker)) |
+| ------------------ | -------------------------------------------------- | ----------------------------------------------- |
+| Best for           | everyday development                               | checking the image, demos, running like a server |
+| Code changes       | picked up on save (`--reload`)                     | need a rebuild: `docker compose up -d --build api` |
+| Tests, debugger    | `uv run pytest`, attach a debugger                 | tests still run on the host, not in the container |
+| Started with       | `./scripts/dev.sh`                                 | `docker compose up -d`                          |
+| Database host      | `localhost` (the published port)                   | `db` (the private network)                      |
+
+Both can run at the same time if they use different host ports (see `API_PORT` below).
+
+### On the host
+
 ```bash
 ./scripts/dev.sh
 ```
@@ -133,6 +152,78 @@ curl http://localhost:8000/health
 ```
 
 Interactive API docs are available at http://localhost:8000/docs.
+
+## Run with Docker
+
+This starts the API **and** PostgreSQL in containers, the way the app would run on a
+server: a small image that runs as a non-root user, no auto-reload, and a database that
+only the API reaches, over a private network. Requires Docker with Docker Compose.
+
+### Start
+
+```bash
+# 1. Create .env (this keeps your .env if you already have one)
+cp -n .env.example .env
+
+# 2. Put a real signing key into a NEW .env. Skip this if .env already has your key:
+#    replacing it would invalidate every token that was issued with the old one.
+sed -i.bak "s|^JWT_SECRET_KEY=.*|JWT_SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')|" .env && rm .env.bak
+
+# 3. Build the image and start both services. The api starts only after the
+#    database reports "healthy".
+docker compose up -d --build
+
+# 4. Create or update the tables. This is a separate, explicit step (see below).
+docker compose run --rm api alembic upgrade head
+```
+
+Check that it works:
+
+```bash
+docker compose ps                        # both services should be "healthy"
+curl http://localhost:8000/health        # {"status":"ok"}
+```
+
+The API is then on http://localhost:8000 (docs at `/docs`), published on `127.0.0.1`
+only. If port 8000 is taken, for example by the app running on the host, set another
+one: `API_PORT=8001 docker compose up -d`.
+
+Migrations are a separate command on purpose. Running them automatically when the
+container starts looks convenient, but several replicas would run them at the same time,
+a failing migration would put the container in a restart loop, and its output would be
+buried in the application logs. Run the command above after the first start and after
+pulling code that adds a migration.
+
+### Everyday commands
+
+```bash
+docker compose logs -f api               # follow the API logs (Ctrl+C stops following)
+docker compose ps                        # status and health of the services
+docker compose up -d --build api         # rebuild and restart the API after a code change
+docker compose run --rm api alembic upgrade head   # apply new migrations
+docker compose restart api               # restart without rebuilding
+docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'   # SQL shell
+docker compose down                      # stop and remove the containers, KEEP the data
+```
+
+> **`docker compose down -v` deletes the database volume, which means all your data.**
+> Plain `down` is safe: the data lives in the named volume `pgdata`, so a new `up`
+> finds it again.
+
+### How it is wired
+
+- **`DATABASE_URL`.** Inside a container `localhost` is the container itself, so the API
+  reaches the database at the host `db` (Docker's DNS name for that service). Compose
+  builds the URL for the `api` service from the `POSTGRES_*` variables, so there is one
+  set of credentials to maintain. The `localhost` value in your `.env` is what the app and
+  the tests use when they run on the host. The password in `.env` must not contain
+  characters that are special in a URL (`@ / : ? #`).
+- **Ports.** The database stays published on `127.0.0.1:5432` for `psql` and the tests
+  you run on the host. On a real server you would not publish it at all.
+- **Image.** A multi-stage build (`Dockerfile`): the build tools stay in the first stage,
+  and the final image holds only the virtualenv and the app code. It runs as an
+  unprivileged user (UID 10001), and `.env` is never copied into it (`.dockerignore`),
+  but Compose passes the values to the running container as environment variables.
 
 ## API
 
@@ -298,6 +389,7 @@ Settings are read from environment variables (and from `.env` if present). See
 | `JWT_SECRET_KEY`    | none (required)             | Signs access tokens, at least 32 characters |
 | `JWT_ALGORITHM`     | `HS256`                     | Token signing algorithm                     |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `30`              | Lifetime of an access token                 |
+| `API_PORT`          | `8000`                      | Host port of the API container (Compose only; set in the shell or `.env`) |
 
 ## Project layout
 
@@ -315,7 +407,9 @@ app/
 └── routers/       # HTTP endpoints: auth, users, posts, comments, likes
 alembic/           # Migration environment and versions
 alembic.ini        # Alembic configuration
-docker-compose.yml # PostgreSQL service for local development
+Dockerfile         # Multi-stage image for the API (non-root, no tests or dev tools)
+.dockerignore      # Keeps .env, tests and caches out of the image
+docker-compose.yml # The api and db services on a private network
 scripts/dev.sh     # Start the dev server
 tests/             # pytest suite (conftest.py sets up the test database)
 ```

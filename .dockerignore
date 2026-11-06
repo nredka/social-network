@@ -1,0 +1,30 @@
+# Files that must never end up in the image, or only slow the build down.
+# Build context = everything not listed here, so keep secrets on this list.
+
+# Secrets and local settings
+.env
+.env.*
+
+# Version control and tooling
+.git
+.github
+.claude
+.idea
+.vscode
+.DS_Store
+
+# Local environments and caches
+.venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+.coverage
+htmlcov
+
+# Not needed to run the app
+tests
+docs
+docker-compose.yml
+Dockerfile
+.dockerignore
