@@ -1,10 +1,13 @@
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, Path, status
+import jwt
+from fastapi import Depends, HTTPException, Path, status
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Post, User
+from app.security import decode_access_token
 
 # Shorthand so route signatures read "db: DbSession" instead of repeating Depends.
 DbSession = Annotated[Session, Depends(get_db)]
@@ -18,25 +21,37 @@ MAX_INT4 = 2**31 - 1
 ResourceId = Annotated[int, Path(ge=1, le=MAX_INT4)]
 
 
-# TODO(milestone-4): TEMPORARY. This trusts a client-supplied X-User-Id header, so
-# anyone can act as anyone. Milestone 4 replaces the body of this function with
-# JWT verification (and adds login). Keep all "who is the caller" logic in this one
-# place so only this dependency changes; routers must not read the header.
+# Reads the token from "Authorization: Bearer <token>" and makes Swagger show the
+# Authorize button. tokenUrl tells Swagger where to send the login form.
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+
+
+def _unauthorized() -> HTTPException:
+    # The same answer for every problem (missing, malformed, bad signature, expired,
+    # unknown user): the client only needs to know it must log in again.
+    return HTTPException(
+        status.HTTP_401_UNAUTHORIZED,
+        "Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
 def get_current_user(
-    db: DbSession,
-    x_user_id: Annotated[str | None, Header()] = None,
+    token: Annotated[str, Depends(oauth2_scheme)], db: DbSession
 ) -> User:
-    if x_user_id is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "X-User-Id header is missing")
+    """Return the user the bearer token was issued for, or answer 401.
+
+    This is the single place that decides who the caller is: routers only depend on
+    CurrentUser and never look at the token themselves.
+    """
     try:
-        user_id = int(x_user_id)
-    except ValueError:
-        raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED, "X-User-Id must be an integer"
-        ) from None
+        user_id = decode_access_token(token)
+    except jwt.InvalidTokenError:
+        raise _unauthorized() from None
+    # The user may have been deleted after the token was issued.
     user = db.get(User, user_id) if 1 <= user_id <= MAX_INT4 else None
     if user is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Unknown user")
+        raise _unauthorized()
     return user
 
 
