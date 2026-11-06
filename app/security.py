@@ -15,6 +15,12 @@ def hash_password(password: str) -> str:
     return _password_hasher.hash(password)
 
 
+# Hash of a throwaway password, computed once at import. Login verifies against it
+# when the user does not exist, so that case takes as long as a wrong password and
+# the response time does not reveal which accounts exist.
+DUMMY_PASSWORD_HASH = hash_password("dummy-password-for-timing-equalisation")
+
+
 def verify_password(plain_password: str, password_hash: str) -> bool:
     """Check a password against a stored hash (the comparison is constant-time)."""
     return _password_hasher.verify(plain_password, password_hash)

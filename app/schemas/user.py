@@ -12,12 +12,21 @@ from pydantic import (
 
 # These limits mirror the CHECK constraints in the database. The schema rejects
 # bad input with a clear 422; the database stays the last line of defence.
+# No "@" in a username: login accepts an email or a username in one field and tells
+# them apart by the "@". A username that looked like someone else's email would make
+# that email's owner unable to log in.
 Username = Annotated[
-    str, StringConstraints(strip_whitespace=True, min_length=3, max_length=50)
+    str,
+    StringConstraints(
+        strip_whitespace=True, min_length=3, max_length=50, pattern=r"^[^@]+$"
+    ),
 ]
 # The upper bound matters: argon2 is deliberately slow, so an unbounded password
-# would let a client burn CPU with a huge request.
-Password = Annotated[str, StringConstraints(min_length=8, max_length=128)]
+# would let a client burn CPU with a huge request. Login uses the same limit.
+MAX_PASSWORD_LENGTH = 128
+Password = Annotated[
+    str, StringConstraints(min_length=8, max_length=MAX_PASSWORD_LENGTH)
+]
 Bio = Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)]
 
 
