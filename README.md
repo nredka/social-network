@@ -1,12 +1,29 @@
 # IT Cluster Social Network
 
+[![CI](https://github.com/nredka/social-network/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nredka/social-network/actions/workflows/ci.yml)
+
 A social networking backend built with FastAPI and PostgreSQL. This is an academic
 project: it is built step by step to practice backend development, databases, Docker
 and CI/CD.
 
-**Current status:** project skeleton plus the database layer (PostgreSQL schema for
-users, posts, comments and likes with Alembic migrations). The REST API, auth, the
-application container and CI are added in later milestones.
+**Current status:** project skeleton, the database layer (PostgreSQL schema for users,
+posts, comments and likes with Alembic migrations) and a CI pipeline that lints, applies
+the migrations and runs the tests on every push and pull request.
+
+**Roadmap**
+
+| Milestone | Topic                                    | Status  |
+| --------- | ---------------------------------------- | ------- |
+| 1         | Project skeleton and Git workflow        | done    |
+| 2         | Database schema and migrations           | done    |
+| 7         | CI pipeline (GitHub Actions)             | done    |
+| 3         | REST API (users, posts, comments, likes) | next    |
+| 4         | Authentication and authorization         | planned |
+| 5         | Tests against a real database            | planned |
+| 6         | Docker image and Compose for the app     | planned |
+| 8         | Docker image build and deploy docs       | planned |
+
+The order of the remaining work is 3 → 4 → 5 → 6 → 8.
 
 ## Requirements
 

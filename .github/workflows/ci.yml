@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# When a new run starts for the same branch or pull request, cancel the older
+# one: only the latest commit matters.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: the workflow can read the repository and nothing else.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # A throwaway PostgreSQL container that lives only for this job. The
+    # credentials are test-only values, so no secrets are needed.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: social_network_test
+        ports:
+          - 5432:5432
+        # The job's steps wait until this healthcheck passes.
+        options: >-
+          --health-cmd "pg_isready -U test -d social_network_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # The steps run directly on the runner, and the service publishes its port
+      # there, so the host is localhost (in Docker Compose it will be "db").
+      # app/main.py builds Settings at import time, so even pytest needs this.
+      DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/social_network_test
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v7
+
+      - name: Install uv with dependency caching
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      # --locked fails if uv.lock is out of date instead of silently changing it.
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Apply migrations
+        run: uv run alembic upgrade head
+
+      - name: Check models match migrations
+        run: uv run alembic check
+
+      - name: Check migrations are reversible
+        run: uv run alembic downgrade base && uv run alembic upgrade head
+
+      - name: Run tests
+        run: uv run pytest -v
