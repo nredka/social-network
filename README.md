@@ -7,8 +7,10 @@ project: it is built step by step to practice backend development, databases, Do
 and CI/CD.
 
 **Current status:** project skeleton, the database layer (PostgreSQL schema for users,
-posts, comments and likes with Alembic migrations) and a CI pipeline that lints, applies
-the migrations and runs the tests on every push and pull request.
+posts, comments and likes with Alembic migrations), a REST API on top of it and a CI
+pipeline that lints, applies the migrations and runs the tests on every push and pull
+request. Login and real authentication are the next milestone: until then the API
+identifies the caller with a temporary `X-User-Id` header (see [API](#api)).
 
 **Roadmap**
 
@@ -17,13 +19,13 @@ the migrations and runs the tests on every push and pull request.
 | 1         | Project skeleton and Git workflow        | done    |
 | 2         | Database schema and migrations           | done    |
 | 7         | CI pipeline (GitHub Actions)             | done    |
-| 3         | REST API (users, posts, comments, likes) | next    |
-| 4         | Authentication and authorization         | planned |
+| 3         | REST API (users, posts, comments, likes) | done    |
+| 4         | Authentication and authorization         | next    |
 | 5         | Tests against a real database            | planned |
 | 6         | Docker image and Compose for the app     | planned |
 | 8         | Docker image build and deploy docs       | planned |
 
-The order of the remaining work is 3 → 4 → 5 → 6 → 8.
+The order of the remaining work is 4 → 5 → 6 → 8.
 
 ## Requirements
 
@@ -123,6 +125,69 @@ curl http://localhost:8000/health
 
 Interactive API docs are available at http://localhost:8000/docs.
 
+## API
+
+Start the database (`docker compose up -d db`), apply the migrations
+(`uv run alembic upgrade head`) and run the app (`./scripts/dev.sh`).
+
+> **Temporary authentication.** Login and JWT arrive in Milestone 4. Until then,
+> endpoints that need a signed-in user read the user id from an `X-User-Id` header.
+> This is **not secure** (anyone can send any id) and exists only for development. It
+> lives in one dependency, `get_current_user` in `app/deps.py`, which Milestone 4
+> replaces. Ownership checks (only the author may edit or delete) come with it, so for
+> now any user may change any post or comment.
+
+| Method and path                  | Auth | Success | Description                                   |
+| -------------------------------- | ---- | ------- | --------------------------------------------- |
+| `POST /auth/register`            | no   | 201     | Create an account (409 if email/username taken) |
+| `GET /users/me`                  | yes  | 200     | Own profile, including the email              |
+| `PATCH /users/me`                | yes  | 200     | Change `username` and/or `bio`                |
+| `GET /users/{id}`                | no   | 200     | Public profile (no email), 404 if missing     |
+| `POST /posts`                    | yes  | 201     | Create a post                                 |
+| `GET /posts`                     | no   | 200     | Newest first; filter `author_id`; `limit`, `offset` |
+| `GET /posts/{id}`                | no   | 200     | One post, 404 if missing                      |
+| `PATCH /posts/{id}`              | yes  | 200     | Edit a post                                   |
+| `DELETE /posts/{id}`             | yes  | 204     | Delete a post with its comments and likes     |
+| `POST /posts/{id}/comments`      | yes  | 201     | Comment on a post                             |
+| `GET /posts/{id}/comments`       | no   | 200     | Oldest first; `limit`, `offset`               |
+| `DELETE /comments/{id}`          | yes  | 204     | Delete a comment                              |
+| `PUT /posts/{id}/like`           | yes  | 204     | Like a post (idempotent)                      |
+| `DELETE /posts/{id}/like`        | yes  | 204     | Remove the like (idempotent)                  |
+
+Status codes: `401` missing or unknown `X-User-Id`, `404` post/user/comment not found,
+`409` email or username already taken, `422` invalid input (a clear message per field).
+Lists accept `limit` (1-100, default 20) and `offset` (default 0).
+
+### Try it with curl
+
+```bash
+# Register two users (the response contains the id to use in X-User-Id)
+curl -X POST localhost:8000/auth/register -H 'Content-Type: application/json' \
+  -d '{"email":"alice@example.com","username":"alice","password":"s3cretpass"}'
+curl -X POST localhost:8000/auth/register -H 'Content-Type: application/json' \
+  -d '{"email":"bob@example.com","username":"bobby","password":"s3cretpass"}'
+
+# Alice writes a post
+curl -X POST localhost:8000/posts -H 'Content-Type: application/json' \
+  -H 'X-User-Id: 1' -d '{"content":"Hello from Alice"}'
+
+# Bob comments and likes it (liking twice still leaves a single like)
+curl -X POST localhost:8000/posts/1/comments -H 'Content-Type: application/json' \
+  -H 'X-User-Id: 2' -d '{"content":"Nice post!"}'
+curl -X PUT localhost:8000/posts/1/like -H 'X-User-Id: 2'
+
+# Read it back (no header needed)
+curl localhost:8000/posts
+curl localhost:8000/posts/1/comments
+```
+
+### Try it in Swagger
+
+Open http://localhost:8000/docs. Register users with `POST /auth/register`, then for any
+endpoint marked "yes" in the table click **Try it out**, put the user id into the
+`x-user-id` field above the request body and click **Execute**. There is no
+**Authorize** button yet: the header is a plain field on each endpoint.
+
 ## Test and lint
 
 ```bash
@@ -149,12 +214,16 @@ Settings are read from environment variables (and from `.env` if present). See
 
 ```
 app/
-├── main.py        # FastAPI app and routes
+├── main.py        # FastAPI app, includes the routers
 ├── config.py      # Settings loaded from the environment
 ├── database.py    # Engine, session factory and get_db dependency
+├── deps.py        # Shared dependencies (DB session, temporary current user)
+├── pagination.py  # limit/offset query parameters
+├── errors.py      # IntegrityError -> 409 translation
+├── security.py    # Password hashing (argon2)
 ├── models/        # SQLAlchemy models: User, Post, Comment, Like
-├── schemas/       # Pydantic request/response models (later milestone)
-└── routers/       # HTTP endpoints grouped by feature (later milestone)
+├── schemas/       # Pydantic input/output models, one file per resource
+└── routers/       # HTTP endpoints: auth, users, posts, comments, likes
 alembic/           # Migration environment and versions
 alembic.ini        # Alembic configuration
 docker-compose.yml # PostgreSQL service for local development
