@@ -10,7 +10,8 @@ and CI/CD.
 posts, comments and likes with Alembic migrations), a REST API on top of it and a CI
 pipeline that lints, applies the migrations and runs the tests on every push and pull
 request. Users log in and call the API with a JWT bearer token, and only the author can
-edit or delete their own posts and comments (see [API](#api)).
+edit or delete their own posts and comments (see [API](#api)). An automated test suite
+runs the API against a real PostgreSQL database (see [Test and lint](#test-and-lint)).
 
 **Roadmap**
 
@@ -21,11 +22,11 @@ edit or delete their own posts and comments (see [API](#api)).
 | 7         | CI pipeline (GitHub Actions)             | done    |
 | 3         | REST API (users, posts, comments, likes) | done    |
 | 4         | Authentication and authorization         | done    |
-| 5         | Tests against a real database            | next    |
-| 6         | Docker image and Compose for the app     | planned |
+| 5         | Tests against a real database            | done    |
+| 6         | Docker image and Compose for the app     | next    |
 | 8         | Docker image build and deploy docs       | planned |
 
-The order of the remaining work is 5 → 6 → 8.
+The order of the remaining work is 6 → 8.
 
 ## Requirements
 
@@ -240,10 +241,44 @@ the same dialog to switch to another user.
 
 ## Test and lint
 
+The tests call the API over HTTP (FastAPI's `TestClient`) against a **real PostgreSQL
+database**, not SQLite: the code relies on PostgreSQL features (`ON CONFLICT`, `CHECK`
+constraints, `timestamptz`, constraint names). They use a separate database so your
+development data is never touched.
+
+**One-time setup:** create the test database (the container from `docker compose up -d
+db` must be running) and make sure `.env` has `TEST_DATABASE_URL` (copy the line from
+`.env.example`):
+
 ```bash
-uv run pytest
-uv run ruff check .
+docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "CREATE DATABASE social_network_test"'
 ```
+
+Then:
+
+```bash
+uv run pytest                                  # run the suite
+uv run pytest -v                               # one line per test
+uv run pytest tests/test_posts.py -k removes    # a single file or a name filter
+uv run pytest --cov=app --cov-report=term-missing   # with a coverage report
+uv run ruff check .                            # lint
+```
+
+How it works:
+
+- The tests **refuse to run** unless the database name in `TEST_DATABASE_URL` ends with
+  `_test`.
+- `tests/conftest.py` points the app at the test database before importing it, applies
+  the Alembic migrations once per session (so the tests also prove the migrations work)
+  and wraps every test in a transaction that is rolled back, so tests cannot affect
+  each other and can run in any order.
+- Coverage is measured with branch coverage and the build fails below the `fail_under`
+  value in `pyproject.toml` (currently 98%). The same command runs in CI.
+
+Tests are written as arrange / act / assert and live in one file per resource:
+`test_auth.py`, `test_users.py`, `test_posts.py`, `test_comments.py`, `test_likes.py`,
+plus `test_error_order.py` (401 before 404), `test_isolation.py`, `test_database.py`
+and `test_errors.py`.
 
 ## Configuration
 
@@ -259,6 +294,7 @@ Settings are read from environment variables (and from `.env` if present). See
 | `POSTGRES_USER`     | none (required by compose)  | Database user created in the container      |
 | `POSTGRES_PASSWORD` | none (required by compose)  | Password of that user                       |
 | `POSTGRES_DB`       | none (required by compose)  | Database name created in the container      |
+| `TEST_DATABASE_URL` | none (required by tests)    | Test database URL, its name must end with `_test` |
 | `JWT_SECRET_KEY`    | none (required)             | Signs access tokens, at least 32 characters |
 | `JWT_ALGORITHM`     | `HS256`                     | Token signing algorithm                     |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `30`              | Lifetime of an access token                 |
@@ -281,7 +317,7 @@ alembic/           # Migration environment and versions
 alembic.ini        # Alembic configuration
 docker-compose.yml # PostgreSQL service for local development
 scripts/dev.sh     # Start the dev server
-tests/             # pytest tests
+tests/             # pytest suite (conftest.py sets up the test database)
 ```
 
 ## License
