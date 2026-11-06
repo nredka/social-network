@@ -44,6 +44,10 @@ jobs:
       # there, so the host is localhost (in Docker Compose it will be "db").
       # app/main.py builds Settings at import time, so even pytest needs this.
       DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/social_network_test
+      # Throwaway value, at least 32 characters. It protects nothing: the runner is
+      # discarded after the run. A real production secret would live in GitHub
+      # Secrets (secrets.JWT_SECRET_KEY), never in this public file.
+      JWT_SECRET_KEY: ci-only-throwaway-key-not-a-real-secret-0123456789
 
     steps:
       - name: Check out the code

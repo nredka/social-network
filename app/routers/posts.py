@@ -1,10 +1,10 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Query, Response, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import select
 
 from app.deps import MAX_INT4, CurrentUser, DbSession, PostById
-from app.models import Post
+from app.models import Post, User
 from app.pagination import PageParams
 from app.schemas import PostCreate, PostRead, PostUpdate
 
@@ -39,12 +39,24 @@ def read_post(post: PostById) -> Post:
     return post
 
 
-# TODO(milestone-4): only the author may change or delete a post (403 otherwise).
-# For now any authenticated user can, because ownership needs real authentication.
+def _require_author(post: Post, user: User) -> None:
+    # 403, not 404: posts are public, so hiding that one exists would protect nothing.
+    # By now the post is known to exist (404 came first) and the caller is known
+    # (401 came first), so the only question left is "is it yours?".
+    if post.author_id != user.id:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "You can only change your own posts"
+        )
+
+
+# Parameter order matters: FastAPI resolves dependencies in the order they are
+# declared. current_user comes first so the error order is 401, then 404, then 403;
+# otherwise an anonymous caller could tell which post ids exist from a 404.
 @router.patch("/{post_id}", response_model=PostRead)
 def update_post(
-    payload: PostUpdate, post: PostById, current_user: CurrentUser, db: DbSession
+    payload: PostUpdate, current_user: CurrentUser, post: PostById, db: DbSession
 ) -> Post:
+    _require_author(post, current_user)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(post, field, value)
     db.commit()
@@ -52,7 +64,8 @@ def update_post(
 
 
 @router.delete("/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_post(post: PostById, current_user: CurrentUser, db: DbSession) -> Response:
+def delete_post(current_user: CurrentUser, post: PostById, db: DbSession) -> Response:
+    _require_author(post, current_user)
     # The database removes the post's comments and likes (ON DELETE CASCADE).
     db.delete(post)
     db.commit()
