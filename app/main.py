@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
 from app.config import get_settings
-from app.routers import auth, comments, posts, users
+from app.routers import auth, comments, likes, posts, users
 
 settings = get_settings()
 
@@ -11,6 +11,7 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(posts.router)
 app.include_router(comments.router)
+app.include_router(likes.router)
 
 
 @app.get("/health")
