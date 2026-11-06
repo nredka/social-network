@@ -97,8 +97,8 @@ needs: the two database URL lines are for development, and Compose builds the re
 from the `POSTGRES_*` values.
 
 ```bash
-JWT=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
-PW=$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')
+JWT=$(openssl rand -hex 32)
+PW=$(openssl rand -hex 24)
 sed -i.bak \
   -e "s|^JWT_SECRET_KEY=.*|JWT_SECRET_KEY=$JWT|" \
   -e "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$PW|" \
