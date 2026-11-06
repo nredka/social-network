@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Path, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -9,9 +9,13 @@ from app.models import User
 # Shorthand so route signatures read "db: DbSession" instead of repeating Depends.
 DbSession = Annotated[Session, Depends(get_db)]
 
-# PostgreSQL "integer" range. A larger id would make the query fail with a
-# database error (500) instead of a clean 401.
-_MAX_INT4 = 2**31 - 1
+# PostgreSQL "integer" range. A larger id makes the query fail with a database
+# error (DataError, a 500) instead of a clean 404/422/401.
+MAX_INT4 = 2**31 - 1
+
+# A resource id taken from the URL path, e.g. /users/{user_id}. Out-of-range values
+# are rejected with a 422 before they reach the database.
+ResourceId = Annotated[int, Path(ge=1, le=MAX_INT4)]
 
 
 # TODO(milestone-4): TEMPORARY. This trusts a client-supplied X-User-Id header, so
@@ -30,7 +34,7 @@ def get_current_user(
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED, "X-User-Id must be an integer"
         ) from None
-    user = db.get(User, user_id) if 1 <= user_id <= _MAX_INT4 else None
+    user = db.get(User, user_id) if 1 <= user_id <= MAX_INT4 else None
     if user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Unknown user")
     return user
