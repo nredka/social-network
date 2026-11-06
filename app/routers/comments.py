@@ -41,10 +41,16 @@ def list_comments(post: PostById, page: PageParams, db: DbSession) -> list[Comme
 def delete_comment(
     comment_id: ResourceId, current_user: CurrentUser, db: DbSession
 ) -> Response:
-    # TODO(milestone-4): only the author may delete a comment (403 otherwise).
     comment = db.get(Comment, comment_id)
     if comment is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Comment not found")
+    # Compare with the comment's author, not the post's: a comment has two foreign
+    # keys, and owning the post does not make someone the author of its comments.
+    # The order is 401 (current_user), 404 (above), then 403 (here).
+    if comment.author_id != current_user.id:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "You can only delete your own comments"
+        )
     db.delete(comment)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
