@@ -16,8 +16,10 @@ router = APIRouter(tags=["comments"])
     status_code=status.HTTP_201_CREATED,
 )
 def create_comment(
-    data: CommentCreate, post: PostById, current_user: CurrentUser, db: DbSession
+    data: CommentCreate, current_user: CurrentUser, post: PostById, db: DbSession
 ) -> Comment:
+    # current_user is declared before post so authentication (401) is checked before
+    # the post is loaded (404); dependencies are resolved in signature order.
     comment = Comment(post_id=post.id, author_id=current_user.id, content=data.content)
     db.add(comment)
     db.commit()

@@ -9,8 +9,10 @@ router = APIRouter(prefix="/posts", tags=["likes"])
 
 
 @router.put("/{post_id}/like", status_code=status.HTTP_204_NO_CONTENT)
-def like_post(post: PostById, current_user: CurrentUser, db: DbSession) -> Response:
+def like_post(current_user: CurrentUser, post: PostById, db: DbSession) -> Response:
     """Like a post. Idempotent: liking an already liked post is not an error."""
+    # current_user is declared before post on purpose: dependencies are resolved in
+    # signature order, so an anonymous caller gets 401 even for a missing post.
     # One atomic statement. If the (user_id, post_id) primary key already exists
     # PostgreSQL does nothing, so there is no race and no IntegrityError to catch.
     db.execute(
@@ -23,7 +25,7 @@ def like_post(post: PostById, current_user: CurrentUser, db: DbSession) -> Respo
 
 
 @router.delete("/{post_id}/like", status_code=status.HTTP_204_NO_CONTENT)
-def unlike_post(post: PostById, current_user: CurrentUser, db: DbSession) -> Response:
+def unlike_post(current_user: CurrentUser, post: PostById, db: DbSession) -> Response:
     """Remove the like. Idempotent: removing a missing like is not an error."""
     db.execute(
         delete(Like).where(Like.user_id == current_user.id, Like.post_id == post.id)
