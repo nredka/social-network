@@ -1,0 +1,75 @@
+# Production stack. Unlike docker-compose.yml (development) it does not build anything:
+# it runs the image that CI published to GitHub Container Registry, so the server needs
+# only this file and a .env, not the source code or a build toolchain.
+#
+#   docker compose -f compose.prod.yml pull
+#   docker compose -f compose.prod.yml up -d
+#   docker compose -f compose.prod.yml run --rm api alembic upgrade head
+#
+# See "Deploy on a Linux server" in the README.
+
+# Docker does not rotate container logs by default, so they grow until the disk is full.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+    # No "ports": the database is NOT published to the host. Only the api, on the
+    # private network below, can reach it. (Development publishes it for psql and tests.)
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    # The tag comes from .env. In production pin an immutable "sha-..." tag: "latest"
+    # moves with every release, so you could not tell what is running or go back to it.
+    image: ghcr.io/nredka/social-network:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    logging: *default-logging
+    env_file: .env
+    environment:
+      # The database is reached by its service name on the private network. Built from
+      # the POSTGRES_* variables so there is one set of credentials to maintain. The
+      # password must not contain characters that are special in a URL (@ / : ? #).
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:?set POSTGRES_DB in .env}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      # Localhost only: a reverse proxy (Caddy or nginx) on the same machine terminates
+      # HTTPS and forwards to this port. Never publish the app straight to the internet.
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    networks:
+      - backend
+    # Hardening. The app writes nothing to disk, so the container can be read-only
+    # (/tmp is a throwaway in-memory directory), needs no Linux capabilities and must
+    # not be able to gain new privileges.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  backend:
+
+volumes:
+  pgdata:
