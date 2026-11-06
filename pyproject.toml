@@ -34,6 +34,17 @@ select = ["E", "F", "I", "B", "UP"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[tool.coverage.run]
+source = ["app"]
+# Branch coverage also checks that both sides of every "if" ran.
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+# Measured: 100%. Slightly lower so one small change does not break the build, but a
+# real drop (for example a new module without tests) does. Applies with --cov.
+fail_under = 98
+
 [dependency-groups]
 dev = [
     "httpx==0.28.1",
