@@ -6,7 +6,7 @@
 #   docker compose -f compose.prod.yml up -d
 #   docker compose -f compose.prod.yml run --rm api alembic upgrade head
 #
-# See "Deploy on a Linux server" in the README.
+# See docs/deploy.md for the full guide.
 
 # Docker does not rotate container logs by default, so they grow until the disk is full.
 x-logging: &default-logging

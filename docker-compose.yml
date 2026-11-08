@@ -7,10 +7,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
     ports:
-      # Published on localhost only, for psql and for tests run on the host. In
-      # production the database would not be published at all: the api reaches it over
-      # the private network below.
-      - "127.0.0.1:5432:5432"
+      # Published on localhost only, for psql and for tests run on the host. The host
+      # port defaults to 5432; set DB_PORT to use another one, for example when a
+      # PostgreSQL of your own already runs on 5432. In production the database would
+      # not be published at all: the api reaches it over the private network below.
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
